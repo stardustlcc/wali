@@ -72,7 +72,7 @@ class Folder extends Ansible {
         $this->_packageFiles($project, $task);
 
         // 2. 传输 tar.gz 文件
-        foreach (Project::getHosts() as $remoteHost) {
+        foreach (Project::getHostsOrGrey($project->hosts) as $remoteHost) {
             // 循环 scp 传输
             $this->_copyPackageToServer($remoteHost, $project, $task);
         }

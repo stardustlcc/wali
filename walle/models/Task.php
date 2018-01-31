@@ -62,6 +62,11 @@ class Task extends \yii\db\ActiveRecord
     const STATUS_FAILED = 4;
 
     /**
+     * 灰度上线完成
+     */
+    const STATUS_GREY = 5;
+
+    /**
      * 可回滚
      */
     const ROLLBACK_TRUE  = 1;

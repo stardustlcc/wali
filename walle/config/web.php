@@ -37,6 +37,16 @@ $config = [
                     'class'  => 'yii\log\FileTarget',
                     'levels' => ['error', 'warning'],
                 ],
+                'db'=>[
+                    'class' => 'yii\log\DbTarget',
+                    'levels' => ['error', 'warning'],
+                    'prefix'=>function () {
+                        $url = !Yii::$app->request->isConsoleRequest ? Yii::$app->request->getUrl() : null;
+                        return sprintf('[%s][%s]', Yii::$app->id, $url);
+                    },
+                    'logVars'=>[],
+                    'logTable'=>'{{%system_log}}'
+                ]
             ],
         ],
         'user' => [
@@ -66,7 +76,7 @@ $config = [
     'params'     => require(__DIR__ . '/params.php'),
 ];
 
-if (YII_ENV_DEV) {
+if (!YII_ENV_TEST) {
     $config['bootstrap'][] = 'debug';
     $config['modules']['debug'] = [
         'class'      => 'yii\debug\Module',

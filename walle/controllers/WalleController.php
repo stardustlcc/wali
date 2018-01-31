@@ -12,6 +12,7 @@ namespace app\controllers;
 use app\components\Ansible;
 use app\components\Command;
 use app\components\Controller;
+use app\components\CurlHelper;
 use app\components\Folder;
 use app\components\Repo;
 use app\components\Task as WalleTask;
@@ -50,6 +51,121 @@ class WalleController extends Controller {
     public $enableCsrfValidation = false;
 
     /**
+     * 灰度发布
+     *
+     * @throws \Exception
+     */
+    public function actionStartGrey() {
+        $taskId = \Yii::$app->request->post('taskId');
+        if (!$taskId) {
+            $this->renderJson([], -1, yii::t('walle', 'deployment id is empty'));
+        }
+        $this->task = TaskModel::findOne($taskId);
+        if (!$this->task) {
+            throw new \Exception(yii::t('walle', 'deployment id not exists'));
+        }
+        if ($this->task->user_id != $this->uid) {
+            throw new \Exception(yii::t('w', 'you are not master of project'));
+        }
+        // 任务失败或者审核通过时可发起上线
+        if (!in_array($this->task->status, [TaskModel::STATUS_PASS, TaskModel::STATUS_FAILED])) {
+            throw new \Exception(yii::t('walle', 'deployment only done for once'));
+        }
+        // 清除历史记录
+        Record::deleteAll(['task_id' => $this->task->id]);
+
+        // 项目配置
+        $this->conf = Project::getConf($this->task->project_id);
+
+        // 处理负载均衡的 灰度IP 权重值为0
+        $alUrl = 'https://slb.aliyuncs.com';
+        $server = [
+            'ServerId' => $this->conf->server_id,
+            'Weight' => '0'
+        ];
+        $param = [
+            'Action'            => 'SetBackendServers',
+            'LoadBalancerId'    => $this->conf->load_balancer_id,
+            'BackendServers'    => [ \GuzzleHttp\json_encode($server) ],
+            'Format'            => 'JSON',
+            'Version'           => '',
+            'AccessKeyId'       => '',
+            'Signature'         => '',
+            'SignatureMethod'   => '',
+            'Timestamp'         => '',
+            'SignatureVersion'  => '',
+            'SignatureNonce'    => '',
+        ];
+
+        $al_result = CurlHelper::post($alUrl, $param);
+        $al_result = json_decode($al_result, true);
+
+        if ( isset($al_result['BackendServers']) && !empty($al_result['BackendServers'])) {
+            echo 11111111111111111;
+        }
+        //exit;
+
+
+
+
+        if( empty($this->conf->hosts_grey) ) {
+            throw new \Exception(yii::t('walle', 'hosts_grey not find'));
+        }
+        /** 项目配置项是灰度的ip, 而不是所有的ip 这里需要重写 hosts */
+        $this->conf->hosts = $this->conf->hosts_grey;
+
+        $this->walleTask   = new WalleTask($this->conf);
+        $this->walleFolder = new Folder($this->conf);
+
+        try {
+            if ($this->task->action == TaskModel::ACTION_ONLINE) {
+                $this->_makeVersion();      //产生一个上线版本
+                $this->_initWorkspace();    //检查目录和权限，工作空间的准备
+                $this->_preDeploy();        //部署前置触发任务
+                $this->_revisionUpdate();   //更新代码文件
+                $this->_postDeploy();       //部署后置触发任务
+                $this->_transmission();     //传输文件/目录到指定目标机器 /记录日志
+                $this->_updateRemoteServers($this->task->link_id, $this->conf->post_release_delay); //执行远程服务器任务集合
+                $this->_cleanRemoteReleaseVersion();        //只保留最大版本数，其余删除过老版本
+                $this->_cleanUpLocal($this->task->link_id); //收尾工作，清除宿主机的临时部署空间
+            } else {
+                $this->_rollback($this->task->ex_link_id);
+            }
+
+            /** 至此已经发布版本到线上了，需要做一些记录工作 */
+
+            // 记录此次上线的版本（软链号）和上线之前的版本
+            // 对于回滚的任务不记录线上版本
+            if ($this->task->action == TaskModel::ACTION_ONLINE) {
+                $this->task->ex_link_id = $this->conf->version; //上一次的版本。
+            }
+            // 第一次上线的任务不能回滚、回滚的任务不能再回滚
+            if ($this->task->action == TaskModel::ACTION_ROLLBACK || $this->task->id == 1) {
+                $this->task->enable_rollback = TaskModel::ROLLBACK_FALSE;
+            }
+
+            //灰度部署完成状态
+            $this->task->status = TaskModel::STATUS_GREY;
+            $this->task->save();
+
+            // 可回滚的版本设置
+            $this->_enableRollBack( TaskModel::STATUS_GREY );
+
+            // 记录当前线上版本（软链）回滚则是回滚的版本，上线为新版本
+            $this->conf->version = $this->task->link_id;
+            $this->conf->save();
+        } catch (\Exception $e) {
+            $this->task->status = TaskModel::STATUS_FAILED;
+            $this->task->save();
+            // 清理本地部署空间
+            $this->_cleanUpLocal($this->task->link_id);
+
+            throw $e;
+        }
+        $this->renderJson([]);
+    }
+
+    /**
      * 发起上线
      *
      * @throws \Exception
@@ -75,6 +191,39 @@ class WalleController extends Controller {
 
         // 项目配置
         $this->conf = Project::getConf($this->task->project_id);
+
+        // 查询是否使用了灰度
+        if ( $this->conf->grey ) {
+            // 处理负载均衡的 灰度IP 权重值为0
+            $alUrl = 'https://slb.aliyuncs.com';
+            $server = [
+                'ServerId' => $this->conf->server_id,
+                'Weight' => '100'
+            ];
+
+            $param = [
+                'Action'            => 'SetBackendServers',
+                'LoadBalancerId'    => $this->conf->load_balancer_id,
+                'BackendServers'    => [ \GuzzleHttp\json_encode($server) ],
+                'Format'            => 'JSON',
+                'Version'           => '',
+                'AccessKeyId'       => '',
+                'Signature'         => '',
+                'SignatureMethod'   => '',
+                'Timestamp'         => '',
+                'SignatureVersion'  => '',
+                'SignatureNonce'    => '',
+            ];
+
+
+            $al_result = CurlHelper::post($alUrl, $param);
+            $al_result = json_decode($al_result, true);
+
+            if ( isset($al_result['BackendServers']) && !empty($al_result['BackendServers'])) {
+                echo 11111111111111111;
+            }
+        }
+
         $this->walleTask   = new WalleTask($this->conf);
         $this->walleFolder = new Folder($this->conf);
         try {
@@ -107,7 +256,7 @@ class WalleController extends Controller {
             $this->task->save();
 
             // 可回滚的版本设置
-            $this->_enableRollBack();
+            $this->_enableRollBack( TaskModel::STATUS_DONE );
 
             // 记录当前线上版本（软链）回滚则是回滚的版本，上线为新版本
             $this->conf->version = $this->task->link_id;
@@ -512,11 +661,12 @@ class WalleController extends Controller {
     /**
      * 可回滚的版本设置
      *
+     * @param $status
      * @return int
      */
-    private function _enableRollBack() {
+    private function _enableRollBack( $status ) {
         $where = ' status = :status AND project_id = :project_id ';
-        $param = [':status' => TaskModel::STATUS_DONE, ':project_id' => $this->task->project_id];
+        $param = [':status' => $status, ':project_id' => $this->task->project_id];
         $offset = TaskModel::find()
             ->select(['id'])
             ->where($where, $param)

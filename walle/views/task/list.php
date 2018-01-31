@@ -57,7 +57,7 @@ use yii\helpers\Url;
                     <?= \Yii::t('w', 'task_status_' . $item['status']) ?></td>
                 <td>
                     <div class="visible-md visible-lg hidden-sm hidden-xs action-buttons">
-                    <?php if ($audit && !in_array($item['status'],[Task::STATUS_DONE, Task::STATUS_FAILED])) { ?>
+                    <?php if ($audit && !in_array($item['status'],[Task::STATUS_DONE, Task::STATUS_FAILED,Task::STATUS_GREY])) { ?>
                         <label>
                             <input class="ace ace-switch ace-switch-5 task-operation"
                                 <?= $item['status'] == Task::STATUS_PASS ? 'checked' : '' ?>
@@ -66,6 +66,14 @@ use yii\helpers\Url;
                         </label>
                     <?php } ?>
                     <?php if ($item['user_id'] == \Yii::$app->user->id) { ?>
+                        <!-- 灰度上线完成-->
+                        <?php if ($item['status'] == Task::STATUS_GREY) { ?>
+                            <a href="<?= Url::to("@web/walle/deploy?taskId={$item['id']}") ?>" class="green">
+                                <i class="icon-cloud-upload text-success bigger-130" data-id="<?= $item['id'] ?>"></i>
+                                <?= yii::t('task', 'deploy') ?>
+                            </a>
+                        <?php } ?>
+
                         <!-- 通过审核可以上线的任务-->
                         <?php if (Task::canDeploy($item['status'])) { ?>
                             <a href="<?= Url::to("@web/walle/deploy?taskId={$item['id']}") ?>" class="green">
@@ -74,12 +82,13 @@ use yii\helpers\Url;
                             </a>
                         <?php } ?>
                         <!-- 回滚的任务不能再回滚-->
-                        <?php if ($item['status'] == Task::STATUS_DONE && $item['enable_rollback'] == Task::ROLLBACK_TRUE) { ?>
+                        <?php if ( ( $item['status'] == Task::STATUS_DONE || $item['status'] == Task::STATUS_GREY ) && $item['enable_rollback'] == Task::ROLLBACK_TRUE) { ?>
                             <a href="javascript:;" class="brown task-rollback" data-id="<?= $item['id'] ?>">
                                 <i class="icon-reply bigger-130"></i>
                                 <?= yii::t('task', 'rollback') ?>
                             </a>
                         <?php } ?>
+                        <!-- 删除按钮 -->
                         <?php if ($item['status'] != Task::STATUS_DONE) { ?>
                             <a class="red btn-delete" href="javascript:;" data-id="<?= $item['id'] ?>">
                                 <i class="icon-trash bigger-130"></i>
@@ -100,7 +109,7 @@ use yii\helpers\Url;
 
 <script type="text/javascript">
     $(function() {
-        // 发起上线
+        // 发起上线 任务审核
         $('.task-operation').click(function() {
             $this = $(this);
             $.get("<?= Url::to('@web/task/task-operation') ?>", {id: $this.data('id'), operation: $this.is(':checked') ? 1 : 0},

@@ -6,10 +6,22 @@ $this->title = yii::t('conf', 'edit');
 use app\models\Project;
 use yii\widgets\ActiveForm;
 ?>
-
+<style>
+    .field-project-grey{
+        margin-bottom: 10px;
+    }
+</style>
 <div class="box">
     <?php $form = ActiveForm::begin(['id' => 'login-form']); ?>
     <div class="box-body">
+
+        <?= $form->field($conf, 'grey')->dropDownList([ '0' => '否', '1' => '是'
+        ],[
+            'class'          => 'col-xs-11',])
+            ->label(yii::t('conf', 'grey'), ['class' => 'text-right bolder blue col-xs-1']) ?>
+        <div class="clearfix"></div>
+
+
         <?= $form->field($conf, 'name')
             ->textInput([
                 'class'          => 'col-xs-11',
@@ -179,6 +191,36 @@ use yii\widgets\ActiveForm;
                               'rows'           => 5,
                           ])
                           ->label(yii::t('conf', 'servers').'<small><i class="light-blue icon-asterisk"></i></small>',
+                              ['class' => 'text-right bolder']) ?>
+                      <?= $form->field($conf, 'hosts_grey')
+                          ->textarea([
+                              'placeholder'    => '192.168.0.1' . PHP_EOL . '192.168.0.2:8888',
+                              'data-placement' => 'top',
+                              'data-rel'       => 'tooltip',
+                              'data-title'     => yii::t('conf', 'grey servers tip'),
+                              'rows'           => 5,
+                          ])
+                          ->label(yii::t('conf', 'servers_grey').'<small><i class="light-blue icon-asterisk"></i></small>',
+                              ['class' => 'text-right bolder']) ?>
+                      <?= $form->field($conf, 'server_id')
+                          ->textarea([
+                              'placeholder'    => 'vm-233' . PHP_EOL . 'vm-239',
+                              'data-placement' => 'top',
+                              'data-rel'       => 'tooltip',
+                              'data-title'     => yii::t('conf', 'server id'),
+                              'rows'           => 5,
+                          ])
+                          ->label(yii::t('conf', 'server_id').'<small><i class="light-blue icon-asterisk"></i></small>',
+                              ['class' => 'text-right bolder']) ?>
+
+                      <?= $form->field($conf, 'load_balancer_id')
+                          ->textInput([
+                              'placeholder'    => '139a00604ad-cn-east-hangzhou-01',
+                              'data-placement' => 'top',
+                              'data-rel'       => 'tooltip',
+                              'data-title'     => yii::t('conf', 'load balancer id'),
+                          ])
+                          ->label(yii::t('conf', 'load_balancer_id').'<small><i class="light-blue icon-asterisk"></i></small>',
                               ['class' => 'text-right bolder']) ?>
                   </div>
               </div>

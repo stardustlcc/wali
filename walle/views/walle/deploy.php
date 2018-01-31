@@ -29,8 +29,13 @@ use yii\helpers\Url;
             ：
             <?= $task->title ?>
             （<?= $task->project->repo_mode . ':' . $task->branch ?> <?= yii::t('walle', 'version') ?><?= $task->commit_id ?>）
-            <?php if (in_array($task->status, [Task::STATUS_PASS, Task::STATUS_FAILED])) { ?>
-                <button type="submit" class="btn btn-primary btn-deploy" data-id="<?= $task->id ?>"><?= yii::t('walle', 'deploy') ?></button>
+            <?php if (in_array($task->status, [Task::STATUS_PASS, Task::STATUS_FAILED]) && !empty($task->project['grey'])) { ?>
+                <button type="submit" class="btn btn-info btn-grey" data-id="<?= $task->id ?>"><?= yii::t('walle', 'grey') ?></button>
+            <?php } ?>
+            <?php if (in_array($task->status, [Task::STATUS_PASS, Task::STATUS_FAILED, Task::STATUS_GREY])) { ?>
+                <button type="submit" class="btn btn-primary btn-deploy"
+                    <?php if( !empty($task->project['grey']) && $task->status != Task::STATUS_GREY) { echo 'disabled="disabled"'; } ?>
+                        data-id="<?= $task->id ?>"><?= yii::t('walle', 'deploy') ?></button>
             <?php } ?>
             <a class="btn btn-success btn-return" href="<?= Url::to('@web/task/index') ?>"><?= yii::t('walle', 'return') ?></a>
     </h4>
@@ -65,6 +70,64 @@ use yii\helpers\Url;
 
 <script type="text/javascript">
     $(function() {
+
+        /** 灰度部署 */
+        $('.btn-grey').click(function() {
+            $this = $(this);
+            $this.addClass('disabled');
+            var task_id = $(this).data('id');
+            var action = '';
+            var detail = '';
+            var timer;
+            $.post("<?= Url::to('@web/walle/start-grey') ?>", {taskId: task_id}, function(o) {
+                action = o.code ? o.msg + ':' : '';
+                if (o.code != 0) {
+                    clearInterval(timer);
+                    $('.progress-status').removeClass('progress-bar-success').addClass('progress-bar-danger');
+                    $('.error-msg').text(action + detail);
+                    $('.result-failed').show();
+                    $this.removeClass('disabled');
+                }
+            });
+            $('.progress-status').attr('aria-valuenow', 10).width('10%');
+            $('.result-failed').hide();
+        /*    function getProcess() {
+                $.get("//</?//= Url::to('@web/walle/get-process?taskId=') ?>" + task_id, function (o) {
+                    data = o.data;
+                    // 执行失败
+                    if (0 == data.status) {
+                        clearInterval(timer);
+                        $('.step-' + data.step).removeClass('text-yellow').addClass('text-red');
+                        $('.progress-status').removeClass('progress-bar-success').addClass('progress-bar-danger');
+                        detail = o.msg + ':' + data.memo + '<br>' + data.command;
+                        $('.error-msg').html(action + detail);
+                        $('.result-failed').show();
+                        $this.removeClass('disabled');
+                        return;
+                    } else {
+                        $('.progress-status')
+                            .removeClass('progress-bar-danger progress-bar-striped')
+                            .addClass('progress-bar-success')
+                    }
+                    if (0 != data.percent) {
+                        $('.progress-status').attr('aria-valuenow', data.percent).width(data.percent + '%');
+                    }
+                    if (100 == data.percent) {
+                        $('.progress-status').removeClass('progress-bar-striped').addClass('progress-bar-success');
+                        $('.progress-status').parent().removeClass('progress-striped');
+                        $('.result-success').show();
+                        clearInterval(timer)
+                    }
+                    for (var i = 1; i <= data.step; i++) {
+                        $('.step-' + i).removeClass('text-yellow text-red')
+                            .addClass('text-green progress-bar-striped')
+                    }
+                });
+            }
+            timer = setInterval(getProcess, 600);*/
+        });
+
+        /** 全量部署 */
         $('.btn-deploy').click(function() {
             $this = $(this);
             $this.addClass('disabled');
@@ -118,8 +181,9 @@ use yii\helpers\Url;
                 });
             }
             timer = setInterval(getProcess, 600);
-        })
+        });
 
+        /** 百度统计 */
         var _hmt = _hmt || [];
         (function() {
             var hm = document.createElement("script");

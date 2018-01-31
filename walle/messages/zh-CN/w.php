@@ -15,6 +15,7 @@ return [
     'task_status_2' => '审核拒绝',
     'task_status_3' => '上线完成',
     'task_status_4' => '上线失败',
+    'task_status_5' => '灰度上线完成',
 
     'task_status_0_color' => 'text-primary',
     'task_status_1_color' => '',
